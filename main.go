@@ -192,10 +192,23 @@ func main() {
 				Action:   doFollows,
 			},
 			{
+				Name:        "inactive-follows",
+				Description: "Show inactive follows",
+				Usage:       "Show inactive follows",
+				UsageText:   "bsky inactive-follows",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "handle", Aliases: []string{"H"}, Value: "", Usage: "user handle"},
+					&cli.BoolFlag{Name: "json", Usage: "output JSON"},
+					&cli.BoolFlag{Name: "strict", Usage: "output only inactive"},
+				},
+				HelpName: "inactive-follows",
+				Action:   doInactiveFollows,
+			},
+			{
 				Name:        "followers",
 				Description: "Show followers",
 				Usage:       "Show followers",
-				UsageText:   "bsky followres",
+				UsageText:   "bsky followers",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "handle", Aliases: []string{"H"}, Value: "", Usage: "user handle"},
 					&cli.BoolFlag{Name: "json", Usage: "output JSON"},

@@ -7,6 +7,7 @@ toolchain go1.22.2
 require (
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/bluesky-social/indigo v0.0.0-20240503174839-ef8e99bfcc76
+	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.16.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/ipfs/go-cid v0.4.1

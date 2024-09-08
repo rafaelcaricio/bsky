@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/dustin/go-humanize"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -296,6 +299,132 @@ func doFollows(cCtx *cli.Context) error {
 		cursor = *follows.Cursor
 	}
 	return nil
+}
+
+func doInactiveFollows(cCtx *cli.Context) error {
+	if cCtx.Args().Present() {
+		return cli.ShowSubcommandHelp(cCtx)
+	}
+
+	xrpcc, err := makeXRPCC(cCtx)
+	if err != nil {
+		return fmt.Errorf("cannot create client: %w", err)
+	}
+
+	arg := cCtx.String("handle")
+	if arg == "" {
+		arg = xrpcc.Auth.Handle
+	}
+
+	var cursor string
+	for {
+		follows, err := bsky.GraphGetFollows(context.TODO(), xrpcc, arg, cursor, 100)
+		if err != nil {
+			return fmt.Errorf("getting record: %w", err)
+		}
+
+		strict := cCtx.Bool("strict")
+
+		if cCtx.Bool("json") {
+			for _, f := range follows.Follows {
+				json.NewEncoder(os.Stdout).Encode(f)
+			}
+		} else {
+			for _, f := range follows.Follows {
+				latestPost, err := getLatestPost(xrpcc, f.Handle)
+				if err != nil {
+					return fmt.Errorf("getting latest post: %w", err)
+					break
+				}
+				followsMe := f.Viewer.FollowedBy != nil
+				if strict && followsMe {
+					continue
+				}
+				if latestPost == nil || (latestPost != nil && latestPost.Post == nil) {
+					outputAccount(f, color.FgHiRed, "never", followsMe)
+				} else {
+					var prettyTime string
+					cor := color.FgRed
+
+					dtime, err := time.Parse(time.RFC3339, latestPost.Post.IndexedAt)
+					if err != nil {
+						// fallback to index time
+						prettyTime = latestPost.Post.IndexedAt
+					} else {
+						cor = colorFor(dtime)
+						prettyTime = humanize.Time(dtime)
+					}
+
+					inactiveColors := []color.Attribute{color.FgRed, color.FgYellow}
+					if strict && !slices.Contains(inactiveColors, cor) {
+						continue
+					}
+
+					outputAccount(f, cor, prettyTime, followsMe)
+				}
+			}
+		}
+		if follows.Cursor == nil {
+			break
+		}
+		cursor = *follows.Cursor
+	}
+	return nil
+}
+
+func outputAccount(f *bsky.ActorDefs_ProfileView, statusColor color.Attribute, prettyTime string, followsMe bool) {
+	color.Set(color.FgHiRed)
+	fmt.Print(f.Handle)
+	color.Set(color.Reset)
+	fmt.Printf(" [%s] ", stringp(f.DisplayName))
+	color.Set(color.FgBlue)
+	fmt.Print(f.Did)
+	color.Set(color.Reset)
+	if followsMe {
+		color.Set(color.FgGreen)
+		fmt.Printf(" [💚] ")
+	} else {
+		color.Set(color.FgRed)
+		fmt.Printf(" [❌] ")
+	}
+	color.Set(color.Reset)
+	color.Set(statusColor)
+	fmt.Printf(" [%s]\n", prettyTime)
+	color.Set(color.Reset)
+}
+
+func colorFor(date time.Time) color.Attribute {
+	duration := time.Now().Sub(date)
+
+	// Calculate weeks, months, and years ago
+	weeksAgo := 7 * 24 * time.Hour
+	monthAgo := 30 * 24 * time.Hour
+	yearAgo := 365 * 24 * time.Hour
+
+	var timeColor color.Attribute
+	switch {
+	case duration <= weeksAgo:
+		timeColor = color.FgGreen // Within the last week
+	case duration <= monthAgo:
+		timeColor = color.FgCyan // Within the last month
+	case duration <= yearAgo:
+		timeColor = color.FgYellow // Within the last year
+	default:
+		timeColor = color.FgRed // More than a year ago
+	}
+
+	return timeColor
+}
+
+func getLatestPost(xrpcc *xrpc.Client, handle string) (*bsky.FeedDefs_FeedViewPost, error) {
+	resp, err := bsky.FeedGetAuthorFeed(context.TODO(), xrpcc, handle, "", "", 1)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get author feed: %w", err)
+	}
+	if len(resp.Feed) == 0 {
+		return nil, nil
+	}
+	return resp.Feed[0], nil
 }
 
 func doFollowers(cCtx *cli.Context) error {
